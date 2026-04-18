@@ -1,0 +1,36 @@
+<!-- SVG icon 192x192 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <rect width="192" height="192" rx="40" fill="#FF8C42"/>
+  <!-- Cat face simplified -->
+  <!-- Ears -->
+  <polygon points="45,75 55,35 75,65" fill="#FEEED4"/>
+  <polygon points="147,75 137,35 117,65" fill="#FEEED4"/>
+  <!-- Head -->
+  <circle cx="96" cy="100" r="58" fill="#FEEED4"/>
+  <!-- Eyes -->
+  <ellipse cx="75" cy="95" rx="12" ry="14" fill="#4A3728"/>
+  <ellipse cx="117" cy="95" rx="12" ry="14" fill="#4A3728"/>
+  <!-- Eye highlights -->
+  <circle cx="79" cy="90" r="4" fill="white"/>
+  <circle cx="121" cy="90" r="4" fill="white"/>
+  <!-- Nose -->
+  <ellipse cx="96" cy="112" rx="7" ry="5" fill="#FF8C42"/>
+  <!-- Mouth -->
+  <path d="M89,120 Q96,128 103,120" stroke="#4A3728" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <!-- Whiskers -->
+  <line x1="50" y1="108" x2="78" y2="112" stroke="#4A3728" stroke-width="2" stroke-linecap="round"/>
+  <line x1="50" y1="118" x2="78" y2="118" stroke="#4A3728" stroke-width="2" stroke-linecap="round"/>
+  <line x1="142" y1="108" x2="114" y2="112" stroke="#4A3728" stroke-width="2" stroke-linecap="round"/>
+  <line x1="142" y1="118" x2="114" y2="118" stroke="#4A3728" stroke-width="2" stroke-linecap="round"/>
+  <!-- Paw prints decoration -->
+  <ellipse cx="25" cy="30" rx="10" ry="8" fill="#FFB74D" opacity="0.6"/>
+  <circle cx="20" cy="22" r="5" fill="#FFB74D" opacity="0.6"/>
+  <circle cx="30" cy="22" r="5" fill="#FFB74D" opacity="0.6"/>
+  <circle cx="18" cy="30" r="4" fill="#FFB74D" opacity="0.6"/>
+  <circle cx="32" cy="30" r="4" fill="#FFB74D" opacity="0.6"/>
+  <ellipse cx="167" cy="30" rx="10" ry="8" fill="#FFB74D" opacity="0.6"/>
+  <circle cx="162" cy="22" r="5" fill="#FFB74D" opacity="0.6"/>
+  <circle cx="172" cy="22" r="5" fill="#FFB74D" opacity="0.6"/>
+  <circle cx="160" cy="30" r="4" fill="#FFB74D" opacity="0.6"/>
+  <circle cx="174" cy="30" r="4" fill="#FFB74D" opacity="0.6"/>
+</svg>
