@@ -1,68 +1,47 @@
 /**
- * 柚子成长记录 - Main Application
- * PWA Cat Growth Tracker
+ * 柚子成长记录 - 纯本地版
  */
 
 (function() {
   'use strict';
 
   // =========================================
-  // Constants & Config
+  // IndexedDB
   // =========================================
-  const DB_NAME = 'yozi_cat_db';
+  const DB_NAME = 'yozi_cat_v3';
   const DB_VERSION = 1;
-  const STORE_RECORDS = 'records';
-  const STORE_PROFILE = 'profile';
 
-  // =========================================
-  // State
-  // =========================================
   let db = null;
   let profileData = null;
   let recordsData = [];
-  let editingRecordId = null;
-  let deletingRecordId = null;
-  let viewerPhotos = [];
-  let viewerIndex = 0;
-  let photoFiles = [];
 
-  // =========================================
-  // IndexedDB
-  // =========================================
   function openDB() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
-
       request.onerror = () => reject(request.error);
-
       request.onsuccess = () => {
         db = request.result;
         resolve(db);
       };
-
-      request.onupgradeneeded = (event) => {
-        const database = event.target.result;
-
-        if (!database.objectStoreNames.contains(STORE_RECORDS)) {
-          const recordsStore = database.createObjectStore(STORE_RECORDS, { keyPath: 'id' });
-          recordsStore.createIndex('date', 'date', { unique: false });
-          recordsStore.createIndex('createdAt', 'createdAt', { unique: false });
+      request.onupgradeneeded = (e) => {
+        const database = e.target.result;
+        if (!database.objectStoreNames.contains('profile')) {
+          database.createObjectStore('profile', { keyPath: 'id' });
         }
-
-        if (!database.objectStoreNames.contains(STORE_PROFILE)) {
-          database.createObjectStore(STORE_PROFILE, { keyPath: 'id' });
+        if (!database.objectStoreNames.contains('records')) {
+          database.createObjectStore('records', { keyPath: 'id' });
         }
       };
     });
   }
 
-  function dbGet(storeName) {
+  function dbGetAll(storeName) {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, 'readonly');
       const store = tx.objectStore(storeName);
-      const request = store.getAll();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
     });
   }
 
@@ -70,9 +49,9 @@
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, 'readwrite');
       const store = tx.objectStore(storeName);
-      const request = store.put(data);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      const req = store.put(data);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
     });
   }
 
@@ -80,22 +59,22 @@
     return new Promise((resolve, reject) => {
       const tx = db.transaction(storeName, 'readwrite');
       const store = tx.objectStore(storeName);
-      const request = store.delete(id);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+      const req = store.delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
     });
   }
 
   // =========================================
-  // Utilities
+  // 工具函数
   // =========================================
   function generateId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+    return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
   }
 
   function formatDate(dateStr) {
-    const date = new Date(dateStr);
-    return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+    const d = new Date(dateStr);
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
   }
 
   function formatRelativeDate(dateStr) {
@@ -103,7 +82,6 @@
     const now = new Date();
     const diff = now - date;
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-
     if (days === 0) return '今天';
     if (days === 1) return '昨天';
     if (days < 7) return `${days}天前`;
@@ -122,6 +100,12 @@
     return Math.max(0, months);
   }
 
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -132,125 +116,89 @@
   }
 
   // =========================================
-  // Toast Notifications
+  // UI
   // =========================================
-  function showToast(message, type = 'info') {
+  function showToast(msg, type = 'info') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.textContent = message;
+    toast.textContent = msg;
     container.appendChild(toast);
-
     setTimeout(() => {
       toast.classList.add('toast-out');
       setTimeout(() => toast.remove(), 200);
     }, 2500);
   }
 
-  // =========================================
-  // Modal Management
-  // =========================================
-  function openModal(modalId) {
-    const overlay = document.getElementById('modal-overlay');
-    overlay.classList.remove('hidden');
-    const modal = document.getElementById(modalId);
-    modal.classList.remove('hidden');
+  function openModal(id) {
+    document.getElementById('modal-overlay').classList.remove('hidden');
+    document.getElementById(id).classList.remove('hidden');
     document.body.style.overflow = 'hidden';
   }
 
   function closeAllModals() {
-    const overlay = document.getElementById('modal-overlay');
-    overlay.classList.add('hidden');
+    document.getElementById('modal-overlay').classList.add('hidden');
     document.querySelectorAll('.modal').forEach(m => m.classList.add('hidden'));
     document.body.style.overflow = '';
 
-    // Reset record form
-    const form = document.getElementById('record-form');
-    form.reset();
+    document.getElementById('record-form').reset();
     document.getElementById('record-date').value = new Date().toISOString().split('T')[0];
     document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
     document.querySelector('.type-btn[data-type="daily"]').classList.add('active');
     document.getElementById('weight-group').classList.add('hidden');
     document.getElementById('photo-preview-grid').innerHTML = '';
     document.getElementById('photo-placeholder').classList.remove('hidden');
-    photoFiles = [];
-    editingRecordId = null;
   }
 
   // =========================================
-  // Photo Viewer
-  // =========================================
-  function openPhotoViewer(photos, index) {
-    viewerPhotos = photos;
-    viewerIndex = index;
-    const viewer = document.getElementById('photo-viewer');
-    viewer.classList.remove('hidden');
-    updateViewerImage();
-    document.body.style.overflow = 'hidden';
-  }
-
-  function closePhotoViewer() {
-    document.getElementById('photo-viewer').classList.add('hidden');
-    document.body.style.overflow = '';
-    viewerPhotos = [];
-  }
-
-  function updateViewerImage() {
-    const img = document.getElementById('viewer-image');
-    img.src = viewerPhotos[viewerIndex];
-    document.getElementById('viewer-counter').textContent =
-      `${viewerIndex + 1} / ${viewerPhotos.length}`;
-
-    const prevBtn = document.getElementById('viewer-prev');
-    const nextBtn = document.getElementById('viewer-next');
-    prevBtn.style.visibility = viewerPhotos.length > 1 ? 'visible' : 'hidden';
-    nextBtn.style.visibility = viewerPhotos.length > 1 ? 'visible' : 'hidden';
-  }
-
-  function viewerNav(direction) {
-    viewerIndex = (viewerIndex + direction + viewerPhotos.length) % viewerPhotos.length;
-    updateViewerImage();
-  }
-
-  // =========================================
-  // Profile
+  // 数据
   // =========================================
   function getDefaultProfile() {
-    return {
-      id: 'profile',
-      name: '柚子',
-      breed: '中华田园猫',
-      birthday: '',
-      arrival: '',
-      avatar: null
-    };
+    return { id: 'profile', name: '柚子', breed: '中华田园猫', birthday: '', arrival: '', avatar: null };
   }
 
   async function loadProfile() {
-    const profiles = await dbGet(STORE_PROFILE);
+    const profiles = await dbGetAll('profile');
     profileData = profiles.find(p => p.id === 'profile') || getDefaultProfile();
-    renderProfile();
   }
 
+  async function loadRecords() {
+    recordsData = await dbGetAll('records');
+    recordsData.sort((a, b) => new Date(b.date) - new Date(a.date));
+  }
+
+  async function saveProfileToDB() {
+    const data = {
+      id: 'profile',
+      name: document.getElementById('profile-name').value.trim() || '柚子',
+      breed: document.getElementById('profile-breed').value.trim() || '中华田园猫',
+      birthday: document.getElementById('profile-birthday').value,
+      arrival: document.getElementById('profile-arrival').value,
+      avatar: profileData?.avatar || null
+    };
+    await dbPut('profile', data);
+    profileData = data;
+    renderProfile();
+    closeAllModals();
+    showToast('档案已更新', 'success');
+  }
+
+  // =========================================
+  // 渲染
+  // =========================================
   function renderProfile() {
     if (!profileData) return;
 
-    document.getElementById('cat-birthday-display').textContent =
-      profileData.birthday ? formatDate(profileData.birthday) : '未设置';
-    document.getElementById('cat-arrival-display').textContent =
-      profileData.arrival ? formatDate(profileData.arrival) : '未设置';
+    document.getElementById('profile-name-display').textContent = profileData.name || '柚子';
+    document.getElementById('profile-breed-display').textContent = profileData.breed || '中华田园猫';
+    document.getElementById('cat-birthday-display').textContent = profileData.birthday ? formatDate(profileData.birthday) : '未设置';
+    document.getElementById('cat-arrival-display').textContent = profileData.arrival ? formatDate(profileData.arrival) : '未设置';
 
     const avatarEl = document.getElementById('profile-avatar');
     if (profileData.avatar) {
       avatarEl.innerHTML = `<img src="${profileData.avatar}" alt="${profileData.name}"/>`;
     } else {
-      avatarEl.innerHTML = `
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21s-9-3-9-7.56c0-1.25.5-2.4 1-3.44 0 0-1.89-6.42-.5-7 1.39-.58 4.72.23 6.5 2.23A9.04 9.04 0 0 1 12 5Z"></path>
-          <path d="M8 14v.5"></path>
-          <path d="M16 14v.5"></path>
-          <path d="M11.25 16.25h1.5L12 17l-.75-.75Z"></path>
-        </svg>`;
+      avatarEl.innerHTML = `<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5c.67 0 1.35.09 2 .26 1.78-2 5.03-2.84 6.42-2.26 1.4.58-.42 7-.42 7 .57 1.07 1 2.24 1 3.44C21 17.9 16.97 21 12 21s-9-3-9-7.56c0-1.25.5-2.4 1-3.44 0 0-1.89-6.42-.5-7 1.39-.58 4.72.23 6.5 2.23A9.04 9.04 0 0 1 12 5Z"></path><path d="M8 14v.5"></path><path d="M16 14v.5"></path><path d="M11.25 16.25h1.5L12 17l-.75-.75Z"></path></svg>`;
     }
 
     updateStats();
@@ -260,33 +208,16 @@
     const months = profileData?.birthday ? calculateMonths(profileData.birthday) : null;
     document.getElementById('stat-months').textContent = months !== null ? `${months}个月` : '--';
 
-    const weightRecords = recordsData.filter(r => r.weight != null).sort((a, b) =>
-      new Date(b.date) - new Date(a.date)
-    );
-    document.getElementById('stat-weight').textContent =
-      weightRecords.length > 0 ? `${weightRecords[0].weight} kg` : '--';
-
+    const weightRecords = recordsData.filter(r => r.weight != null).sort((a, b) => new Date(b.date) - new Date(a.date));
+    document.getElementById('stat-weight').textContent = weightRecords.length > 0 ? `${weightRecords[0].weight} kg` : '--';
     document.getElementById('stat-records').textContent = recordsData.length;
 
     if (recordsData.length > 0) {
-      const sorted = [...recordsData].sort((a, b) =>
-        new Date(b.createdAt) - new Date(a.createdAt)
-      );
-      document.getElementById('stat-last-update').textContent =
-        formatRelativeDate(sorted[0].date);
+      const sorted = [...recordsData].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      document.getElementById('stat-last-update').textContent = formatRelativeDate(sorted[0].date);
     } else {
       document.getElementById('stat-last-update').textContent = '--';
     }
-  }
-
-  // =========================================
-  // Timeline
-  // =========================================
-  async function loadRecords() {
-    recordsData = await dbGet(STORE_RECORDS);
-    recordsData.sort((a, b) => new Date(b.date) - new Date(a.date));
-    renderTimeline();
-    updateStats();
   }
 
   function getTypeLabel(type) {
@@ -315,304 +246,180 @@
     }
 
     emptyState.classList.add('hidden');
-    timeline.innerHTML = recordsData.map((record, index) => {
+    timeline.innerHTML = recordsData.map((record, i) => {
       const photos = record.photos || [];
-      const photoGridClass = photos.length === 1 ? 'cols-1' :
-                            photos.length === 2 ? 'cols-2' : 'cols-3';
+      const photoClass = photos.length === 1 ? 'cols-1' : photos.length === 2 ? 'cols-2' : 'cols-3';
 
       let photoHtml = '';
       if (photos.length > 0) {
-        const visiblePhotos = photos.slice(0, 3);
-        const extraCount = photos.length - 3;
-
-        photoHtml = `<div class="timeline-photo-grid ${photoGridClass}">
-          ${visiblePhotos.map((photo, i) => `
-            <div class="timeline-photo-thumb" data-index="${i}" data-photos='${JSON.stringify(photos)}'>
-              <img src="${photo}" alt="照片${i + 1}"/>
-            </div>
-          `).join('')}
-          ${extraCount > 0 ? `<div class="timeline-photo-more">+${extraCount}</div>` : ''}
-        </div>`;
+        const visible = photos.slice(0, 3);
+        const extra = photos.length - 3;
+        photoHtml = `<div class="timeline-photo-grid ${photoClass}">${visible.map((p, idx) => `<div class="timeline-photo-thumb" data-idx="${idx}" data-photos='${JSON.stringify(photos)}'><img src="${p}" alt="照片${idx+1}"/></div>`).join('')}${extra > 0 ? `<div class="timeline-photo-more">+${extra}</div>` : ''}</div>`;
       }
 
-      return `
-        <div class="timeline-item" style="animation-delay: ${index * 60}ms" data-id="${record.id}">
-          <div class="timeline-dot type-${record.type}"></div>
-          <div class="timeline-card">
-            <div class="timeline-card-header">
-              <span class="timeline-card-title">${escapeHtml(record.title)}</span>
-              <span class="timeline-card-date">${formatRelativeDate(record.date)}</span>
-            </div>
-            ${record.description ? `<p class="timeline-card-body">${escapeHtml(record.description)}</p>` : ''}
-            <div class="timeline-card-meta">
-              ${record.weight ? `<span class="timeline-weight-badge">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"></circle><path d="M12 8v8"></path><path d="M5 21a7 7 0 0 1 14 0"></path></svg>
-                ${record.weight} kg
-              </span>` : ''}
-              <span class="timeline-type-badge">
-                ${getTypeIcon(record.type)}
-                ${getTypeLabel(record.type)}
-              </span>
-            </div>
-            ${photoHtml}
-            <div class="timeline-card-actions">
-              <button class="timeline-action-btn edit-record" data-id="${record.id}">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></svg>
-                编辑
-              </button>
-              <button class="timeline-action-btn delete" data-id="${record.id}">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-                删除
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
+      return `<div class="timeline-item" style="animation-delay:${i*60}ms"><div class="timeline-dot type-${record.type}"></div><div class="timeline-card"><div class="timeline-card-header"><span class="timeline-card-title">${escapeHtml(record.title)}</span><span class="timeline-card-date">${formatRelativeDate(record.date)}</span></div>${record.description ? `<p class="timeline-card-body">${escapeHtml(record.description)}</p>` : ''}<div class="timeline-card-meta">${record.weight ? `<span class="timeline-weight-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="3"></circle><path d="M12 8v8"></path><path d="M5 21a7 7 0 0 1 14 0"></path></svg>${record.weight} kg</span>` : ''}<span class="timeline-type-badge">${getTypeIcon(record.type)}${getTypeLabel(record.type)}</span></div>${photoHtml}<div class="timeline-card-actions"><button class="timeline-action-btn edit-record" data-id="${record.id}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></svg>编辑</button><button class="timeline-action-btn delete-record" data-id="${record.id}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>删除</button></div></div></div>`;
     }).join('');
 
-    // Bind click events
-    timeline.querySelectorAll('.edit-record').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        editRecord(btn.dataset.id);
-      });
+    timeline.querySelectorAll('.edit-record').forEach(b => {
+      b.addEventListener('click', e => { e.stopPropagation(); openEditRecord(b.dataset.id); });
     });
-
-    timeline.querySelectorAll('.delete').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        confirmDeleteRecord(btn.dataset.id);
-      });
+    timeline.querySelectorAll('.delete-record').forEach(b => {
+      b.addEventListener('click', e => { e.stopPropagation(); confirmDelete(b.dataset.id); });
     });
-
-    timeline.querySelectorAll('.timeline-photo-thumb').forEach(thumb => {
-      thumb.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const photos = JSON.parse(thumb.dataset.photos);
-        const index = parseInt(thumb.dataset.index, 10);
-        openPhotoViewer(photos, index);
-      });
+    timeline.querySelectorAll('.timeline-photo-thumb').forEach(t => {
+      t.addEventListener('click', e => { e.stopPropagation(); openViewer(JSON.parse(t.dataset.photos), parseInt(t.dataset.idx)); });
     });
   }
 
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
+  // =========================================
+  // 记录操作
+  // =========================================
+  let editingRecordId = null;
+  let deletingRecordId = null;
+  let photoFiles = [];
 
-  // =========================================
-  // Record CRUD
-  // =========================================
   async function saveRecord() {
     const title = document.getElementById('record-title').value.trim();
     const date = document.getElementById('record-date').value;
-    const description = document.getElementById('record-description').value.trim();
+    const desc = document.getElementById('record-description').value.trim();
     const type = document.querySelector('.type-btn.active').dataset.type;
-    const weight = document.getElementById('record-weight').value ?
-      parseFloat(document.getElementById('record-weight').value) : null;
+    const weight = document.getElementById('record-weight').value ? parseFloat(document.getElementById('record-weight').value) : null;
 
-    if (!title) {
-      showToast('请输入标题', 'error');
-      return;
-    }
+    if (!title) { showToast('请输入标题', 'error'); return; }
+    if (!date) { showToast('请选择日期', 'error'); return; }
+    if (new Date(date) > new Date()) { showToast('日期不能是未来', 'error'); return; }
 
-    if (!date) {
-      showToast('请选择日期', 'error');
-      return;
-    }
-
-    if (new Date(date) > new Date()) {
-      showToast('日期不能是未来', 'error');
-      return;
-    }
-
-    // Convert photos to base64
     let photos = [];
     if (photoFiles.length > 0) {
       try {
         photos = await Promise.all(photoFiles.map(f => fileToBase64(f)));
-      } catch (err) {
-        showToast('照片上传失败', 'error');
-        return;
-      }
+      } catch (err) { showToast('照片上传失败', 'error'); return; }
     }
 
+    const isEdit = !!editingRecordId;
     const record = {
-      id: editingRecordId || generateId(),
-      date,
-      type,
-      title,
-      description: description || null,
+      id: isEdit ? editingRecordId : generateId(),
+      date, type, title,
+      description: desc || null,
       weight,
       photos: photos.length > 0 ? photos : null,
-      createdAt: editingRecordId ?
-        (recordsData.find(r => r.id === editingRecordId)?.createdAt || new Date().toISOString()) :
-        new Date().toISOString()
+      createdAt: isEdit ? (recordsData.find(r => r.id === editingRecordId)?.createdAt || new Date().toISOString()) : new Date().toISOString()
     };
 
-    try {
-      await dbPut(STORE_RECORDS, record);
-      await loadRecords();
-      closeAllModals();
-      showToast(editingRecordId ? '记录已更新' : '记录已保存', 'success');
-    } catch (err) {
-      showToast('保存失败', 'error');
-      console.error(err);
-    }
-  }
-
-  function editRecord(id) {
-    const record = recordsData.find(r => r.id === id);
-    if (!record) return;
-
-    editingRecordId = id;
-    document.getElementById('modal-title').textContent = '编辑记录';
-    document.getElementById('record-date').value = record.date;
-    document.getElementById('record-title').value = record.title;
-    document.getElementById('record-description').value = record.description || '';
-    document.getElementById('record-weight').value = record.weight || '';
-
-    document.querySelectorAll('.type-btn').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.type === record.type);
-    });
-    document.getElementById('weight-group').classList.toggle('hidden', record.type !== 'weight');
-
-    // Show existing photos
-    photoFiles = [];
-    const grid = document.getElementById('photo-preview-grid');
-    grid.innerHTML = '';
-    if (record.photos && record.photos.length > 0) {
-      document.getElementById('photo-placeholder').classList.add('hidden');
-      record.photos.forEach((photo, i) => {
-        const item = document.createElement('div');
-        item.className = 'photo-preview-item';
-        item.innerHTML = `
-          <img src="${photo}" alt="照片${i + 1}"/>
-          <button type="button" class="photo-remove-btn" data-index="${i}">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-          </button>
-        `;
-        grid.appendChild(item);
-      });
-    } else {
-      document.getElementById('photo-placeholder').classList.remove('hidden');
-    }
-
-    openModal('record-modal');
-  }
-
-  function confirmDeleteRecord(id) {
-    deletingRecordId = id;
-    openModal('delete-modal');
+    await dbPut('records', record);
+    await loadRecords();
+    renderTimeline();
+    updateStats();
+    closeAllModals();
+    showToast(isEdit ? '记录已更新' : '记录已保存', 'success');
   }
 
   async function deleteRecord() {
     if (!deletingRecordId) return;
+    await dbDelete('records', deletingRecordId);
+    await loadRecords();
+    renderTimeline();
+    updateStats();
+    closeAllModals();
+    showToast('记录已删除', 'success');
+    deletingRecordId = null;
+  }
 
-    try {
-      await dbDelete(STORE_RECORDS, deletingRecordId);
-      await loadRecords();
-      closeAllModals();
-      showToast('记录已删除', 'success');
-    } catch (err) {
-      showToast('删除失败', 'error');
-      console.error(err);
+  function openEditRecord(id) {
+    const r = recordsData.find(x => x.id === id);
+    if (!r) return;
+    editingRecordId = id;
+
+    document.getElementById('modal-title').textContent = '编辑记录';
+    document.getElementById('record-date').value = r.date;
+    document.getElementById('record-title').value = r.title;
+    document.getElementById('record-description').value = r.description || '';
+    document.getElementById('record-weight').value = r.weight || '';
+
+    document.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === r.type));
+    document.getElementById('weight-group').classList.toggle('hidden', r.type !== 'weight');
+
+    photoFiles = [];
+    const grid = document.getElementById('photo-preview-grid');
+    grid.innerHTML = '';
+    if (r.photos && r.photos.length > 0) {
+      document.getElementById('photo-placeholder').classList.add('hidden');
+      r.photos.forEach((p, i) => {
+        const div = document.createElement('div');
+        div.className = 'photo-preview-item';
+        div.innerHTML = `<img src="${p}" alt="照片${i+1}"/><button type="button" class="photo-remove-btn" data-idx="${i}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>`;
+        grid.appendChild(div);
+      });
+    } else {
+      document.getElementById('photo-placeholder').classList.remove('hidden');
     }
+    openModal('record-modal');
+  }
+
+  function confirmDelete(id) {
+    deletingRecordId = id;
+    openModal('delete-modal');
   }
 
   // =========================================
-  // Profile Save
+  // 照片查看器
   // =========================================
-  async function saveProfile() {
-    profileData = {
-      ...profileData,
-      id: 'profile',
-      name: document.getElementById('profile-name').value.trim() || '柚子',
-      breed: document.getElementById('profile-breed').value.trim() || '中华田园猫',
-      birthday: document.getElementById('profile-birthday').value,
-      arrival: document.getElementById('profile-arrival').value
-    };
+  let viewerPhotos = [], viewerIdx = 0;
 
-    try {
-      await dbPut(STORE_PROFILE, profileData);
-      renderProfile();
-      closeAllModals();
-      showToast('档案已更新', 'success');
-    } catch (err) {
-      showToast('保存失败', 'error');
-      console.error(err);
-    }
+  function openViewer(photos, idx) {
+    viewerPhotos = photos;
+    viewerIdx = idx;
+    document.getElementById('photo-viewer').classList.remove('hidden');
+    updateViewer();
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeViewer() {
+    document.getElementById('photo-viewer').classList.add('hidden');
+    document.body.style.overflow = '';
+    viewerPhotos = [];
+  }
+
+  function updateViewer() {
+    document.getElementById('viewer-image').src = viewerPhotos[viewerIdx];
+    document.getElementById('viewer-counter').textContent = `${viewerIdx + 1} / ${viewerPhotos.length}`;
+    document.getElementById('viewer-prev').style.visibility = viewerPhotos.length > 1 ? 'visible' : 'hidden';
+    document.getElementById('viewer-next').style.visibility = viewerPhotos.length > 1 ? 'visible' : 'hidden';
+  }
+
+  function viewerNav(dir) {
+    viewerIdx = (viewerIdx + dir + viewerPhotos.length) % viewerPhotos.length;
+    updateViewer();
   }
 
   // =========================================
-  // Avatar Upload
-  // =========================================
-  async function handleAvatarUpload(file) {
-    if (!file || !file.type.startsWith('image/')) {
-      showToast('请选择图片文件', 'error');
-      return;
-    }
-
-    try {
-      const base64 = await fileToBase64(file);
-      profileData.avatar = base64;
-      await dbPut(STORE_PROFILE, profileData);
-      renderProfile();
-      showToast('头像已更新', 'success');
-    } catch (err) {
-      showToast('上传失败', 'error');
-      console.error(err);
-    }
-  }
-
-  // =========================================
-  // PWA
-  // =========================================
-  async function registerServiceWorker() {
-    if ('serviceWorker' in navigator) {
-      try {
-        const registration = await navigator.serviceWorker.register('./sw.js');
-        console.log('[App] SW registered:', registration.scope);
-      } catch (err) {
-        console.log('[App] SW registration failed:', err);
-      }
-    }
-  }
-
-  function updateOfflineStatus() {
-    const banner = document.getElementById('offline-banner');
-    banner.classList.toggle('hidden', navigator.onLine);
-  }
-
-  // =========================================
-  // Event Bindings
+  // 事件绑定
   // =========================================
   function bindEvents() {
-    // FAB - open add modal
+    // FAB
     document.getElementById('add-record-btn').addEventListener('click', () => {
+      editingRecordId = null;
       document.getElementById('modal-title').textContent = '添加记录';
+      photoFiles = [];
       openModal('record-modal');
     });
 
-    // Modal close buttons
-    document.getElementById('modal-close').addEventListener('click', closeAllModals);
-    document.getElementById('modal-cancel').addEventListener('click', closeAllModals);
-    document.getElementById('profile-modal-close').addEventListener('click', closeAllModals);
-    document.getElementById('profile-cancel').addEventListener('click', closeAllModals);
-    document.getElementById('delete-cancel').addEventListener('click', closeAllModals);
+    // Close buttons
+    ['modal-close', 'modal-cancel', 'profile-modal-close', 'profile-cancel', 'delete-cancel'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('click', closeAllModals);
+    });
 
-    // Overlay click to close
-    document.getElementById('modal-overlay').addEventListener('click', (e) => {
+    document.getElementById('modal-overlay').addEventListener('click', e => {
       if (e.target === e.currentTarget) closeAllModals();
     });
 
-    // Modal save buttons
+    // Save buttons
     document.getElementById('modal-save').addEventListener('click', saveRecord);
-    document.getElementById('profile-save').addEventListener('click', saveProfile);
+    document.getElementById('profile-save').addEventListener('click', saveProfileToDB);
     document.getElementById('delete-confirm').addEventListener('click', deleteRecord);
 
-    // Edit profile button
+    // Edit profile
     document.getElementById('edit-profile-btn').addEventListener('click', () => {
       document.getElementById('profile-name').value = profileData?.name || '柚子';
       document.getElementById('profile-breed').value = profileData?.breed || '中华田园猫';
@@ -621,147 +428,116 @@
       openModal('profile-modal');
     });
 
-    // Edit avatar button
+    // Avatar upload
     document.getElementById('edit-avatar-btn').addEventListener('click', () => {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'image/*';
-      input.onchange = (e) => {
-        if (e.target.files[0]) handleAvatarUpload(e.target.files[0]);
+      input.onchange = async e => {
+        if (!e.target.files[0]) return;
+        try {
+          const base64 = await fileToBase64(e.target.files[0]);
+          profileData.avatar = base64;
+          await dbPut('profile', profileData);
+          renderProfile();
+          showToast('头像已更新', 'success');
+        } catch (err) { showToast('上传失败', 'error'); }
       };
       input.click();
     });
 
     // Type selector
-    document.getElementById('type-selector').addEventListener('click', (e) => {
+    document.getElementById('type-selector').addEventListener('click', e => {
       const btn = e.target.closest('.type-btn');
       if (!btn) return;
-
       document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-
-      const weightGroup = document.getElementById('weight-group');
-      weightGroup.classList.toggle('hidden', btn.dataset.type !== 'weight');
+      document.getElementById('weight-group').classList.toggle('hidden', btn.dataset.type !== 'weight');
     });
 
-    // Photo upload area
-    const photoUploadArea = document.getElementById('photo-upload-area');
+    // Photo upload
+    const uploadArea = document.getElementById('photo-upload-area');
     const photoInput = document.getElementById('photo-input');
 
-    photoUploadArea.addEventListener('click', () => photoInput.click());
-    photoUploadArea.addEventListener('dragover', (e) => {
+    uploadArea.addEventListener('click', () => photoInput.click());
+    uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.style.borderColor = 'var(--color-primary)'; });
+    uploadArea.addEventListener('dragleave', () => uploadArea.style.borderColor = '');
+    uploadArea.addEventListener('drop', async e => {
       e.preventDefault();
-      photoUploadArea.style.borderColor = 'var(--color-primary)';
-    });
-    photoUploadArea.addEventListener('dragleave', () => {
-      photoUploadArea.style.borderColor = '';
-    });
-    photoUploadArea.addEventListener('drop', async (e) => {
-      e.preventDefault();
-      photoUploadArea.style.borderColor = '';
+      uploadArea.style.borderColor = '';
       const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-      await handlePhotoFiles(files);
+      photoFiles.push(...files);
+      renderPhotoPreviews();
     });
-
-    photoInput.addEventListener('change', async (e) => {
+    photoInput.addEventListener('change', e => {
       const files = Array.from(e.target.files);
-      await handlePhotoFiles(files);
+      photoFiles.push(...files);
+      renderPhotoPreviews();
       e.target.value = '';
     });
 
-    // Photo preview remove
-    document.getElementById('photo-preview-grid').addEventListener('click', (e) => {
-      const removeBtn = e.target.closest('.photo-remove-btn');
-      if (!removeBtn) return;
-
-      const index = parseInt(removeBtn.dataset.index, 10);
-      photoFiles.splice(index, 1);
+    // Photo remove
+    document.getElementById('photo-preview-grid').addEventListener('click', e => {
+      const btn = e.target.closest('.photo-remove-btn');
+      if (!btn) return;
+      photoFiles.splice(parseInt(btn.dataset.idx), 1);
       renderPhotoPreviews();
-
-      if (photoFiles.length === 0 && (!editingRecordId || !(recordsData.find(r => r.id === editingRecordId)?.photos?.length))) {
-        document.getElementById('photo-placeholder').classList.remove('hidden');
-      }
     });
 
-    // Photo viewer
-    document.getElementById('viewer-close').addEventListener('click', closePhotoViewer);
+    // Viewer
+    document.getElementById('viewer-close').addEventListener('click', closeViewer);
     document.getElementById('viewer-prev').addEventListener('click', () => viewerNav(-1));
     document.getElementById('viewer-next').addEventListener('click', () => viewerNav(1));
-
-    document.getElementById('photo-viewer').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) closePhotoViewer();
-    });
-
-    document.addEventListener('keydown', (e) => {
-      if (!document.getElementById('photo-viewer').classList.contains('hidden')) {
-        if (e.key === 'Escape') closePhotoViewer();
-        if (e.key === 'ArrowLeft') viewerNav(-1);
-        if (e.key === 'ArrowRight') viewerNav(1);
-      }
+    document.getElementById('photo-viewer').addEventListener('click', e => { if (e.target === e.currentTarget) closeViewer(); });
+    document.addEventListener('keydown', e => {
+      if (document.getElementById('photo-viewer').classList.contains('hidden')) return;
+      if (e.key === 'Escape') closeViewer();
+      if (e.key === 'ArrowLeft') viewerNav(-1);
+      if (e.key === 'ArrowRight') viewerNav(1);
     });
 
     // Offline status
-    window.addEventListener('online', updateOfflineStatus);
-    window.addEventListener('offline', updateOfflineStatus);
-  }
-
-  async function handlePhotoFiles(files) {
-    photoFiles.push(...files);
-    renderPhotoPreviews();
+    window.addEventListener('online', () => document.getElementById('offline-banner').classList.add('hidden'));
+    window.addEventListener('offline', () => document.getElementById('offline-banner').classList.remove('hidden'));
   }
 
   function renderPhotoPreviews() {
     const grid = document.getElementById('photo-preview-grid');
     const placeholder = document.getElementById('photo-placeholder');
-
     placeholder.classList.toggle('hidden', photoFiles.length > 0);
     grid.innerHTML = '';
-
-    photoFiles.forEach((file, index) => {
-      const item = document.createElement('div');
-      item.className = 'photo-preview-item';
-      item.innerHTML = `
-        <img src="${URL.createObjectURL(file)}" alt="照片${index + 1}"/>
-        <button type="button" class="photo-remove-btn" data-index="${index}">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-        </button>
-      `;
-      grid.appendChild(item);
+    photoFiles.forEach((f, i) => {
+      const div = document.createElement('div');
+      div.className = 'photo-preview-item';
+      div.innerHTML = `<img src="${URL.createObjectURL(f)}" alt="照片${i+1}"/><button type="button" class="photo-remove-btn" data-idx="${i}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>`;
+      grid.appendChild(div);
     });
   }
 
   // =========================================
-  // Initialize
+  // 初始化
   // =========================================
   async function init() {
     try {
       await openDB();
       await loadProfile();
       await loadRecords();
+      renderProfile();
+      renderTimeline();
       bindEvents();
-      updateOfflineStatus();
 
-      // Set default date for record form
       document.getElementById('record-date').value = new Date().toISOString().split('T')[0];
-
-      console.log('[App] Initialized');
+      console.log('[App] 初始化完成');
     } catch (err) {
-      console.error('[App] Init failed:', err);
-      showToast('应用加载失败', 'error');
+      console.error('[App] 初始化失败:', err);
+      showToast('应用加载失败，请刷新页面', 'error');
     }
   }
 
-  // Start app
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', async () => {
-      await registerServiceWorker();
-      await init();
-    });
+    document.addEventListener('DOMContentLoaded', init);
   } else {
-    (async () => {
-      await registerServiceWorker();
-      await init();
-    })();
+    init();
   }
 
 })();
